@@ -65,6 +65,7 @@ export class HealthBar {
             return;
         }
 
+        this.clearDeaths()
         const text = "☠" + String(this.player.deaths)
         this.deathText = this.scene.add.text(this.textX, this.textY, text, { fontFamily: 'Arial', fontSize: '40', color: '#700009', align: 'left' })
         this.player.add(this.deathText)
