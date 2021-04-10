@@ -22,7 +22,9 @@ import {
     WorldFullMessage,
     AdminPusherToBackMessage,
     ServerToAdminClientMessage,
-    UserJoinedRoomMessage, UserLeftRoomMessage, AdminMessage, BanMessage, RefreshRoomMessage
+    UserJoinedRoomMessage, UserLeftRoomMessage, AdminMessage, BanMessage, RefreshRoomMessage,
+    HitMessage,
+    PlayerHealthChangedMessage, PlayerPerformedHitMessage
 } from "../Messages/generated/messages_pb";
 import {ProtobufUtils} from "../Model/Websocket/ProtobufUtils";
 import {JITSI_ISS, SECRET_JITSI_KEY} from "../Enum/EnvironmentVariable";
@@ -53,7 +55,7 @@ export interface AdminSocketData {
 }
 
 export class SocketManager implements ZoneEventListener {
-    
+
     private rooms: Map<string, PusherRoom> = new Map<string, PusherRoom>();
     private sockets: Map<number, ExSocketInterface> = new Map<number, ExSocketInterface>();
 
@@ -180,7 +182,7 @@ export class SocketManager implements ZoneEventListener {
                     // If this is the first message sent, send back the viewport.
                     this.handleViewport(client, viewport);
                 }
-                
+
                 if (message.hasRefreshroommessage()) {
                     const refreshMessage:RefreshRoomMessage = message.getRefreshroommessage() as unknown as RefreshRoomMessage;
                     this.refreshRoomData(refreshMessage.getRoomid(), refreshMessage.getVersionnumber())
@@ -371,7 +373,7 @@ export class SocketManager implements ZoneEventListener {
     public getWorlds(): Map<string, PusherRoom> {
         return this.rooms;
     }
-    
+
     searchClientByUuid(uuid: string): ExSocketInterface | null {
         for(const socket of this.sockets.values()){
             if(socket.userUuid === uuid){
@@ -421,6 +423,13 @@ export class SocketManager implements ZoneEventListener {
         } catch (e) {
             console.error('An error occured while generating the Jitsi JWT token: ', e);
         }
+    }
+
+    public handleHitMessage(client: ExSocketInterface, hitMessage: HitMessage) {
+        const pusherToBackMessage = new PusherToBackMessage();
+        pusherToBackMessage.setHitmessage(hitMessage);
+
+        client.backConnection.write(pusherToBackMessage);
     }
 
     public async emitSendUserMessage(userUuid: string, message: string, type: string, roomId: string) {
@@ -514,6 +523,23 @@ export class SocketManager implements ZoneEventListener {
         emitInBatch(listener, subMessage);
     }
 
+    public onHealthChanged(userId: number, health: number, deaths: number, listener: ExSocketInterface): void {
+        const healthChangedMessage = new PlayerHealthChangedMessage();
+        healthChangedMessage.setUserid(userId);
+        healthChangedMessage.setHealth(health);
+        healthChangedMessage.setDeaths(deaths);
+
+        const subMessage = new SubMessage();
+        subMessage.setPlayerhealthchangedmessage(healthChangedMessage);
+        emitInBatch(listener, subMessage);
+    }
+
+    public onPlayerPerformedHit(message: PlayerPerformedHitMessage, listener: ExSocketInterface) {
+        const subMessage = new SubMessage();
+        subMessage.setPlayerperformedhitmessage(message);
+        emitInBatch(listener, subMessage);
+    }
+
     public onUserLeaves(userId: number, listener: ExSocketInterface): void {
         const userLeftMessage = new UserLeftMessage();
         userLeftMessage.setUserid(userId);
@@ -544,7 +570,7 @@ export class SocketManager implements ZoneEventListener {
 
         emitInBatch(listener, subMessage);
     }
-    
+
     public emitWorldFullMessage(client: WebSocket) {
         const errorMessage = new WorldFullMessage();
 
@@ -556,9 +582,9 @@ export class SocketManager implements ZoneEventListener {
 
     private refreshRoomData(roomId: string, versionNumber: number): void {
         const room = this.rooms.get(roomId);
-        //this function is run for every users connected to the room, so we need to make sure the room wasn't already refreshed. 
+        //this function is run for every users connected to the room, so we need to make sure the room wasn't already refreshed.
         if (!room || !room.needsUpdate(versionNumber)) return;
-        
+
         this.updateRoomWithAdminData(room);
     }
 }

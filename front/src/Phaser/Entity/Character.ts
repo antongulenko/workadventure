@@ -1,9 +1,11 @@
 import {PlayerAnimationDirections, PlayerAnimationTypes} from "../Player/Animation";
 import {SpeechBubble} from "./SpeechBubble";
+import {HealthBar} from "./HealthBar";
 import BitmapText = Phaser.GameObjects.BitmapText;
 import Container = Phaser.GameObjects.Container;
 import Sprite = Phaser.GameObjects.Sprite;
 import {TextureError} from "../../Exception/TextureError";
+import {PositionMessage} from "../../Messages/generated/messages_pb"
 
 interface AnimationData {
     key: string;
@@ -13,14 +15,22 @@ interface AnimationData {
     frames : number[]
 }
 
+export const hitAnimationTexture = "hit_animation-";
+export const hitAnimationKey = "hit_animation_all";
+
 export abstract class Character extends Container {
     private bubble: SpeechBubble|null = null;
+    private healthBar: HealthBar;
     private readonly playerName: BitmapText;
     public PlayerValue: string;
     public sprites: Map<string, Sprite>;
     private lastDirection: PlayerAnimationDirections = PlayerAnimationDirections.Down;
     //private teleportation: Sprite;
     private invisible: boolean;
+
+    public health: number = 100;
+    public deaths: number = 0;
+    private hitAnimations: Sprite[];
 
     constructor(scene: Phaser.Scene,
                 x: number,
@@ -29,7 +39,7 @@ export abstract class Character extends Container {
                 name: string,
                 direction: PlayerAnimationDirections,
                 moving: boolean,
-                frame?: string | number
+                frame?: string | number,
     ) {
         super(scene, x, y/*, texture, frame*/);
         this.PlayerValue = name;
@@ -67,6 +77,9 @@ export abstract class Character extends Container {
         this.setDepth(-1);
 
         this.playAnimation(direction, moving);
+
+        this.healthBar = new HealthBar(scene, this);
+        this.hitAnimations = this.makeHitAnimationSprites(hitAnimationTexture)
     }
 
     public addTextures(textures: string[], frame?: string | number): void {
@@ -91,6 +104,41 @@ export abstract class Character extends Container {
             }
             this.sprites.set(texture, sprite);
         }
+    }
+
+    private makeHitAnimationSprites(textureBase: string) {
+        // Create sprites around the player
+        let sprites = []
+        const distance = 30
+        sprites.push(this.makeHitSprite(0, -distance)) // Top
+        sprites.push(this.makeHitSprite(distance, 0)) // Right
+        sprites.push(this.makeHitSprite(0, distance)) // Bottom
+        sprites.push(this.makeHitSprite(-distance, 0)) // Left
+
+        // Create animations from textures
+        for (let i = 1; i <= 9; i++) {
+            const texture = textureBase + String(i)
+            this.scene.anims.create({
+                key: hitAnimationKey + String(i),
+                frames: this.scene.anims.generateFrameNumbers(texture, {}),
+                defaultTextureKey: texture,
+                duration: 400,
+                repeat: 0,
+                showOnStart: true,
+                hideOnComplete: true,
+            });
+        }
+
+        return sprites;
+    }
+
+    private makeHitSprite(x: number, y: number) {
+        const sprite = new Sprite(this.scene, x, y, ""); // Texture seems to be irrelevant, if the animations reference the correct texture
+        sprite.setVisible(false)
+        this.add(sprite)
+        this.scene.sys.updateList.add(sprite);
+        sprite.setScale(2)
+        return sprite
     }
 
     private getPlayerAnimations(name: string): AnimationData[] {
@@ -168,6 +216,33 @@ export abstract class Character extends Container {
         return body;
     }
 
+    public animateHit(direction: PositionMessage.Direction): void {
+        let sprite_index = 0;
+        switch (direction) {
+            case(PositionMessage.Direction.UP): {
+                sprite_index = 0;
+                break
+            }
+            case(PositionMessage.Direction.RIGHT): {
+                sprite_index = 1;
+                break
+            }
+            case(PositionMessage.Direction.DOWN): {
+                sprite_index = 2;
+                break
+            }
+            case(PositionMessage.Direction.LEFT): {
+                sprite_index = 3;
+                break
+            }
+        }
+
+        const num_animations = 9
+        const animation_num = Math.floor(Math.random() * num_animations);
+
+        this.hitAnimations[sprite_index].play(hitAnimationKey + String(animation_num+1))
+    }
+
     move(x: number, y: number) {
         const body = this.getBody();
 
@@ -207,6 +282,12 @@ export abstract class Character extends Container {
         }, 3000)
     }
 
+    updateHealth(health: number, deaths: number) {
+        this.health = health;
+        this.deaths = deaths;
+        this.healthBar.update();
+    }
+
     destroy(): void {
         for (const sprite of this.sprites.values()) {
             if(this.scene) {
@@ -215,5 +296,6 @@ export abstract class Character extends Container {
         }
         super.destroy();
         this.playerName.destroy();
+        this.healthBar.destroy();
     }
 }

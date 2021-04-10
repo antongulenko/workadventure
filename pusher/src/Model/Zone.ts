@@ -5,7 +5,7 @@ import {
     CharacterLayerMessage, GroupLeftZoneMessage, GroupUpdateMessage, GroupUpdateZoneMessage,
     PointMessage, PositionMessage, UserJoinedMessage,
     UserJoinedZoneMessage, UserLeftZoneMessage, UserMovedMessage,
-    ZoneMessage
+    ZoneMessage, PlayerHealthChangedMessage, PlayerPerformedHitMessage
 } from "../Messages/generated/messages_pb";
 import * as messages_pb from "../Messages/generated/messages_pb";
 import {ClientReadableStream} from "grpc";
@@ -23,6 +23,9 @@ export interface ZoneEventListener {
     onGroupEnters(group: GroupDescriptor, listener: ExSocketInterface): void;
     onGroupMoves(group: GroupDescriptor, listener: ExSocketInterface): void;
     onGroupLeaves(groupId: number, listener: ExSocketInterface): void;
+
+    onHealthChanged(userId: number, health: number, deaths: number, listener: ExSocketInterface): void;
+    onPlayerPerformedHit(message: PlayerPerformedHitMessage, listener: ExSocketInterface): void;
 }
 
 /*export type EntersCallback = (thing: Movable, listener: User) => void;
@@ -70,6 +73,10 @@ export class UserDescriptor {
         userMovedMessage.setPosition(this.position);
 
         return userMovedMessage;
+    }
+
+    public getPosition(): PositionMessage {
+        return this.position
     }
 }
 
@@ -182,6 +189,12 @@ export class Zone {
                     userDescriptor.update(userMovedMessage);
 
                     this.notifyUserMove(userDescriptor);
+                } else if (message.hasPlayerhealthchangedmessage()) {
+                    const playerHealthChangedMessage = message.getPlayerhealthchangedmessage() as PlayerHealthChangedMessage;
+                    this.notifyPlayerHealthChanged(playerHealthChangedMessage.getUserid(), playerHealthChangedMessage.getHealth(), playerHealthChangedMessage.getDeaths());
+                } else if (message.hasPlayerperformedhitmessage()) {
+                    const playerPerformedHitMessage = message.getPlayerperformedhitmessage() as PlayerPerformedHitMessage;
+                    this.notifyPlayerPerformedHit(playerPerformedHitMessage)
                 } else {
                     throw new Error('Unexpected message');
                 }
@@ -298,6 +311,18 @@ export class Zone {
                 continue;
             }
             this.socketListener.onUserMoves(userDescriptor, listener);
+        }
+    }
+
+    private notifyPlayerHealthChanged(userId: number, health: number, deaths: number) {
+        for (const listener of this.listeners) {
+            this.socketListener.onHealthChanged(userId, health, deaths, listener)
+        }
+    }
+
+    private notifyPlayerPerformedHit(message: PlayerPerformedHitMessage) {
+        for (const listener of this.listeners) {
+            this.socketListener.onPlayerPerformedHit(message, listener)
         }
     }
 

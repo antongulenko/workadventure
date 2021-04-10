@@ -1,17 +1,20 @@
 import { Group } from "./Group";
 import { PointInterface } from "./Websocket/PointInterface";
-import {Zone} from "_Model/Zone";
-import {Movable} from "_Model/Movable";
-import {PositionNotifier} from "_Model/PositionNotifier";
-import {ServerDuplexStream} from "grpc";
-import {BatchMessage, PusherToBackMessage, ServerToClientMessage, SubMessage} from "../Messages/generated/messages_pb";
-import {CharacterLayer} from "_Model/Websocket/CharacterLayer";
+import { Zone } from "_Model/Zone";
+import { Movable } from "_Model/Movable";
+import { PositionNotifier } from "_Model/PositionNotifier";
+import { ServerDuplexStream } from "grpc";
+import { BatchMessage, PusherToBackMessage, ServerToClientMessage, SubMessage } from "../Messages/generated/messages_pb";
+import { CharacterLayer } from "_Model/Websocket/CharacterLayer";
 
 export type UserSocket = ServerDuplexStream<PusherToBackMessage, ServerToClientMessage>;
+export type HealthCallback = (user: User, health: number) => void;
 
 export class User implements Movable {
     public listenedZones: Set<Zone>;
     public group?: Group;
+    private health: number = 100;
+    private deaths: number = 0;
 
     public constructor(
         public id: number,
@@ -23,7 +26,7 @@ export class User implements Movable {
         public readonly socket: UserSocket,
         public readonly tags: string[],
         public readonly name: string,
-        public readonly characterLayers: CharacterLayer[]
+        public readonly characterLayers: CharacterLayer[],
     ) {
         this.listenedZones = new Set<Zone>();
 
@@ -40,9 +43,21 @@ export class User implements Movable {
         this.positionNotifier.updatePosition(this, position, oldPosition);
     }
 
+    public getHealth(): number {
+        return this.health;
+    }
+
+    public takeDamage(damage: number) {
+        this.health -= damage;
+        if (this.health <= 0) {
+            this.health = 100
+            this.deaths += 1
+        }
+        this.positionNotifier.healthUpdated(this, this.health, this.deaths);
+    }
 
     private batchedMessages: BatchMessage = new BatchMessage();
-    private batchTimeout: NodeJS.Timeout|null = null;
+    private batchTimeout: NodeJS.Timeout | null = null;
 
     public emitInBatch(payload: SubMessage): void {
         this.batchedMessages.addPayload(payload);

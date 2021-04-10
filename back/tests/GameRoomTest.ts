@@ -43,7 +43,7 @@ describe("GameRoom", () => {
 
         }
 
-        const world = new GameRoom('_/global/test.json', connect, disconnect, 160, 160, () => {}, () => {}, () => {});
+        const world = new GameRoom('_/global/test.json', connect, disconnect, 160, 160, () => {}, () => {}, () => {}, () => {});
 
 
 
@@ -72,7 +72,7 @@ describe("GameRoom", () => {
 
         }
 
-        const world = new GameRoom('_/global/test.json', connect, disconnect, 160, 160, () => {}, () => {}, () => {});
+        const world = new GameRoom('_/global/test.json', connect, disconnect, 160, 160, () => {}, () => {}, () => {}, () => {});
 
         const user1 = world.join(createMockUserSocket(), createJoinRoomMessage('1', 100, 100));
 
@@ -101,7 +101,7 @@ describe("GameRoom", () => {
             disconnectCallNumber++;
         }
 
-        const world = new GameRoom('_/global/test.json', connect, disconnect, 160, 160, () => {}, () => {}, () => {});
+        const world = new GameRoom('_/global/test.json', connect, disconnect, 160, 160, () => {}, () => {}, () => {}, () => {});
 
         const user1 = world.join(createMockUserSocket(), createJoinRoomMessage('1', 100, 100));
 

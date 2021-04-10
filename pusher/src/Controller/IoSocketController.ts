@@ -12,7 +12,7 @@ import {
     WebRtcSignalToServerMessage,
     PlayGlobalMessage,
     ReportPlayerMessage,
-    QueryJitsiJwtMessage, SendUserMessage, ServerToClientMessage
+    QueryJitsiJwtMessage, SendUserMessage, ServerToClientMessage, HitMessage
 } from "../Messages/generated/messages_pb";
 import {UserMovesMessage} from "../Messages/generated/messages_pb";
 import {TemplatedApp} from "uWebSockets.js"
@@ -175,7 +175,7 @@ export class IoSocketController {
                                         console.warn('Cannot find user with uuid "'+userUuid+'". Performing an anonymous login instead.');
                                     } else if(err?.response?.status == 403) {
                                         // If we get an HTTP 404, the world is full. We need to broadcast a special error to the client.
-                                        // we finish immediatly the upgrade then we will close the socket as soon as it starts opening. 
+                                        // we finish immediatly the upgrade then we will close the socket as soon as it starts opening.
                                         res.upgrade({
                                             rejected: true,
                                         }, websocketKey,
@@ -261,7 +261,7 @@ export class IoSocketController {
                     socketManager.emitWorldFullMessage(ws);
                     ws.close();
                 }
-                
+
                 // Let's join the room
                 const client = this.initClient(ws);
                 socketManager.handleJoinRoom(client);
@@ -308,6 +308,8 @@ export class IoSocketController {
                     socketManager.handleReportMessage(client, message.getReportplayermessage() as ReportPlayerMessage);
                 } else if (message.hasQueryjitsijwtmessage()){
                     socketManager.handleQueryJitsiJwtMessage(client, message.getQueryjitsijwtmessage() as QueryJitsiJwtMessage);
+                } else if (message.hasHitmessage()) {
+                    socketManager.handleHitMessage(client, message.getHitmessage() as HitMessage);
                 }
 
                     /* Ok is false if backpressure was built up, wait for drain */

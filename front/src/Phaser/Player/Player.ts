@@ -3,6 +3,7 @@ import {GameScene} from "../Game/GameScene";
 import {UserInputEvent, UserInputManager} from "../UserInput/UserInputManager";
 import {Character} from "../Entity/Character";
 
+export const hitEventName = "hasHit";
 
 export const hasMovedEventName = "hasMoved";
 export interface CurrentGamerInterface extends Character{
@@ -13,6 +14,8 @@ export interface CurrentGamerInterface extends Character{
 export class Player extends Character implements CurrentGamerInterface {
     private previousDirection: string = PlayerAnimationDirections.Down;
     private wasMoving: boolean = false;
+
+    private lastEmittedHit = new Date();
 
     constructor(
         Scene: GameScene,
@@ -70,9 +73,20 @@ export class Player extends Character implements CurrentGamerInterface {
             }
         }
 
+        // Send a hit event when the button was pressed
+        if (activeEvents.get(UserInputEvent.Hit)) {
+            const milliseconds_between_hits = 250
+            const now = new Date()
+            if (now.getTime() - this.lastEmittedHit.getTime() > milliseconds_between_hits) {
+                this.emit(hitEventName, {moving, direction: this.previousDirection, x: this.x, y: this.y})
+                this.lastEmittedHit = now
+            }
+        }
+
         if (direction !== null) {
             this.previousDirection = direction;
         }
         this.wasMoving = moving;
     }
+
 }

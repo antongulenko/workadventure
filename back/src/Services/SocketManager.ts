@@ -27,11 +27,13 @@ import {
     WorldFullWarningMessage,
     UserLeftZoneMessage,
     BanUserMessage, RefreshRoomMessage,
+    HitMessage, PlayerHealthChangedMessage, PlayerPerformedHitMessage, PositionMessage,
 } from "../Messages/generated/messages_pb";
 import {User, UserSocket} from "../Model/User";
 import {ProtobufUtils} from "../Model/Websocket/ProtobufUtils";
 import {Group} from "../Model/Group";
 import {cpuTracker} from "./CpuTracker";
+import { PointInterface } from "../Model/Websocket/PointInterface";
 import {
     GROUP_RADIUS,
     JITSI_ISS,
@@ -52,13 +54,13 @@ import {Admin} from "_Model/Admin";
 import crypto from "crypto";
 
 
-const debug = Debug('sockermanager');
+const debug = Debug('socketmanager');
 
 function emitZoneMessage(subMessage: SubToPusherMessage, socket: ZoneSocket): void {
     // TODO: should we batch those every 100ms?
     const batchMessage = new BatchToPusherMessage();
     batchMessage.addPayload(subMessage);
-    
+
 
     socket.write(batchMessage);
 }
@@ -76,10 +78,10 @@ export class SocketManager {
     }
 
     public async handleJoinRoom(socket: UserSocket, joinRoomMessage: JoinRoomMessage): Promise<{ room: GameRoom; user: User }> {
-        
+
         //join new previous room
         const {room, user} = await this.joinRoom(socket, joinRoomMessage);
-        
+
         if (!socket.writable) {
             console.warn('Socket was aborted');
             return {
@@ -128,7 +130,7 @@ export class SocketManager {
             if (viewport === undefined) {
                 throw new Error('Viewport not found in message');
             }
-            
+
 
             // update position in the world
             room.updatePosition(user, ProtobufUtils.toPointInterface(position));
@@ -263,7 +265,9 @@ export class SocketManager {
                 GROUP_RADIUS,
                 (thing: Movable, fromZone: Zone|null, listener: ZoneSocket) => this.onZoneEnter(thing, fromZone, listener),
                 (thing: Movable, position:PositionInterface, listener: ZoneSocket) => this.onClientMove(thing, position, listener),
-                (thing: Movable, newZone: Zone|null, listener: ZoneSocket) => this.onClientLeave(thing, newZone, listener)
+                (thing: Movable, newZone: Zone|null, listener: ZoneSocket) => this.onClientLeave(thing, newZone, listener),
+                (user: User, health: number, deaths: number, listener: ZoneSocket) => this.onHealthUpdated(user, health, deaths, listener),
+                (user: User, listener: ZoneSocket) => this.onUserPerformedHit(user, listener),
             );
             gaugeManager.incNbRoomGauge();
             this.rooms.set(roomId, world);
@@ -338,6 +342,14 @@ export class SocketManager {
         }
     }
 
+    private onHealthUpdated(user: User, health: number, deaths: number, listener: ZoneSocket) {
+        this.emitUserHealthUpdated(listener, user.id, health, deaths);
+    }
+
+    private onUserPerformedHit(user: User, listener: ZoneSocket) {
+        this.emitPlayerPerformedHit(listener, user.id, user.getPosition())
+    }
+
     private emitCreateUpdateGroupEvent(client: ZoneSocket, fromZone: Zone|null, group: Group): void {
         const position = group.getPosition();
         const pointMessage = new PointMessage();
@@ -375,6 +387,29 @@ export class SocketManager {
 
         const subMessage = new SubToPusherMessage();
         subMessage.setUserleftzonemessage(userLeftMessage);
+
+        emitZoneMessage(subMessage, client);
+    }
+
+    private emitUserHealthUpdated(client: ZoneSocket, userId: number, health: number, deaths: number): void {
+        const playerHealthChangedMessage = new PlayerHealthChangedMessage();
+        playerHealthChangedMessage.setUserid(userId);
+        playerHealthChangedMessage.setHealth(health);
+        playerHealthChangedMessage.setDeaths(deaths);
+
+        const subMessage = new SubToPusherMessage();
+        subMessage.setPlayerhealthchangedmessage(playerHealthChangedMessage);
+
+        emitZoneMessage(subMessage, client);
+    }
+
+    private emitPlayerPerformedHit(client: ZoneSocket, userId: number, position: PointInterface): void {
+        const playerPerformedHitMessage = new PlayerPerformedHitMessage();
+        playerPerformedHitMessage.setUserid(userId);
+        playerPerformedHitMessage.setPosition(ProtobufUtils.toPositionMessage(position));
+
+        const subMessage = new SubToPusherMessage();
+        subMessage.setPlayerperformedhitmessage(playerPerformedHitMessage);
 
         emitZoneMessage(subMessage, client);
     }
@@ -560,6 +595,21 @@ export class SocketManager {
         user.socket.write(serverToClientMessage);
     }
 
+    public handleHitMessage(room: GameRoom, user: User, hitMessage: HitMessage) {
+        try{
+            const position = hitMessage.getPosition();
+            if (position === undefined) {
+                throw new Error('Position not found in message');
+            }
+
+            // update health of close users
+            room.performHit(user, ProtobufUtils.toPointInterface(position));
+        } catch (e) {
+            console.error('An error occurred on "hit_message" event');
+            console.error(e);
+        }
+    }
+
     public handlerSendUserMessage(user: User, sendUserMessageToSend: SendUserMessage){
         const sendUserMessage = new SendUserMessage();
         sendUserMessage.setMessage(sendUserMessageToSend.getMessage());
@@ -733,7 +783,7 @@ export class SocketManager {
             console.error("In sendAdminRoomMessage, could not find room with id '" +  roomId + "'. Maybe the room was closed a few milliseconds ago and there was a race condition?");
             return;
         }
-        
+
         room.getUsers().forEach((recipient) => {
             const worldFullMessage = new WorldFullWarningMessage();
 
@@ -749,7 +799,7 @@ export class SocketManager {
         if (!room) {
             return;
         }
-        
+
         const versionNumber = room.incrementVersion();
         room.getUsers().forEach((recipient) => {
             const worldFullMessage = new RefreshRoomMessage();

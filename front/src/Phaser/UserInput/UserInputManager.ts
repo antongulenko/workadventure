@@ -13,6 +13,7 @@ export enum UserInputEvent {
     SpeedUp,
     Interact,
     Shout,
+    Hit,
 }
 
 //we cannot the map structure so we have to create a replacment
@@ -57,6 +58,8 @@ export class UserInputManager {
             {event: UserInputEvent.Interact, keyInstance: this.Scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E, false) },
             {event: UserInputEvent.Interact, keyInstance: this.Scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE, false) },
             {event: UserInputEvent.Shout, keyInstance: this.Scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F, false) },
+
+            {event: UserInputEvent.Hit, keyInstance: this.Scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C, false) },
         ];
     }
 

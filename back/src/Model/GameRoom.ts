@@ -2,7 +2,7 @@ import {PointInterface} from "./Websocket/PointInterface";
 import {Group} from "./Group";
 import {User, UserSocket} from "./User";
 import {PositionInterface} from "_Model/PositionInterface";
-import {EntersCallback, LeavesCallback, MovesCallback} from "_Model/Zone";
+import {EntersCallback, LeavesCallback, MovesCallback, HealthCallback, UserPerformedHitCallback} from "_Model/Zone";
 import {PositionNotifier} from "./PositionNotifier";
 import {Movable} from "_Model/Movable";
 import {extractDataFromPrivateRoomId, extractRoomSlugPublicRoomId, isRoomAnonymous} from "./RoomIdentifier";
@@ -51,7 +51,9 @@ export class GameRoom {
                 groupRadius: number,
                 onEnters: EntersCallback,
                 onMoves: MovesCallback,
-                onLeaves: LeavesCallback)
+                onLeaves: LeavesCallback,
+                onHealthUpdate: HealthCallback,
+                onHitCallback: UserPerformedHitCallback)
     {
         this.roomId = roomId;
 
@@ -74,7 +76,7 @@ export class GameRoom {
         this.minDistance = minDistance;
         this.groupRadius = groupRadius;
         // A zone is 10 sprites wide.
-        this.positionNotifier = new PositionNotifier(320, 320, onEnters, onMoves, onLeaves);
+        this.positionNotifier = new PositionNotifier(320, 320, onEnters, onMoves, onLeaves, onHealthUpdate, onHitCallback);
     }
 
     public getGroups(): Group[] {
@@ -143,6 +145,76 @@ export class GameRoom {
 
     public isEmpty(): boolean {
         return this.users.size === 0 && this.admins.size === 0;
+    }
+
+    public performHit(user : User, hitPosition: PointInterface): void {
+        // First, broadcast the hit
+        this.positionNotifier.userPerformedHit(user)
+
+        // Next, compute who gets hit
+        let hitXFrom = hitPosition.x;
+        let hitXTo = hitPosition.x;
+        let hitYFrom = hitPosition.y;
+        let hitYTo = hitPosition.y;
+
+        const hitBoxX = 16+32;
+        const hitBoxY = 16+32;
+
+        switch (hitPosition.direction) {
+            case "up": {
+                hitYFrom -= hitBoxY;
+                hitXFrom -= hitBoxX / 2;
+                hitXTo += hitBoxX / 2;
+                break;
+            }
+            case "down": {
+                hitYTo += hitBoxY;
+                hitXFrom -= hitBoxX / 2;
+                hitXTo += hitBoxX / 2;
+                break;
+            }
+            case "left": {
+                hitXFrom -= hitBoxX;
+                hitYFrom -= hitBoxY / 2;
+                hitYTo += hitBoxY / 2;
+                break;
+            }
+            case "right": {
+                hitXTo += hitBoxX;
+                hitYFrom -= hitBoxY / 2;
+                hitYTo += hitBoxY / 2;
+                break;
+            }
+        }
+
+        // console.warn("Checking hit " +
+        // " x=" + String(hitXFrom) + "-" + String(hitXTo) +
+        // " y=" + String(hitYFrom) + "-" + String(hitYTo) +
+        // " dir=" + hitPosition.direction +
+        // " for room with users: " + String(this.users.size)
+        // );
+
+        for (let otherUser of this.users.values()) {
+            if (otherUser === user) {
+                // Do not hit yourself?
+                continue;
+            }
+            let userX = otherUser.getPosition().x;
+            let userY = otherUser.getPosition().y;
+
+            let wasHit = userX >= hitXFrom && userX <= hitXTo && userY >= hitYFrom && userY <= hitYTo;
+
+            // console.warn("Checking hit " +
+            //             " x=" + String(hitXFrom) + "-" + String(hitXTo) +
+            //             " y=" + String(hitYFrom) + "-" + String(hitYTo) +
+            //             " for user " + otherUser.name  + " at " + String(userX) + ", " + String(userY) + ": " + String(wasHit));
+
+            if (wasHit) {
+                // Found user in hit range
+                const hit_damage = 7;
+                otherUser.takeDamage(hit_damage);
+            }
+        }
     }
 
     public updatePosition(user : User, userPosition: PointInterface): void {
@@ -319,7 +391,7 @@ export class GameRoom {
     public adminLeave(admin: Admin): void {
         this.admins.delete(admin);
     }
-    
+
     public incrementVersion(): number {
         this.versionNumber++
         return this.versionNumber;
