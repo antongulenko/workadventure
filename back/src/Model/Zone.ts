@@ -7,6 +7,8 @@ import {ZoneSocket} from "../RoomManager";
 export type EntersCallback = (thing: Movable, fromZone: Zone|null, listener: ZoneSocket) => void;
 export type MovesCallback = (thing: Movable, position: PositionInterface, listener: ZoneSocket) => void;
 export type LeavesCallback = (thing: Movable, newZone: Zone|null, listener: ZoneSocket) => void;
+export type HealthCallback = (user: User, health: number, deaths: number, listener: ZoneSocket) => void;
+export type UserPerformedHitCallback = (user: User, listener: ZoneSocket) => void;
 
 export class Zone {
     private things: Set<Movable> = new Set<Movable>();
@@ -16,7 +18,9 @@ export class Zone {
      * @param x For debugging purpose only
      * @param y For debugging purpose only
      */
-    constructor(private onEnters: EntersCallback, private onMoves: MovesCallback, private onLeaves: LeavesCallback, public readonly x: number, public readonly y: number) {
+    constructor(private onEnters: EntersCallback, private onMoves: MovesCallback, private onLeaves: LeavesCallback,
+        private onHealthUpdate: HealthCallback, private onHitCallback: UserPerformedHitCallback,
+        public readonly x: number, public readonly y: number) {
     }
 
     /**
@@ -34,6 +38,18 @@ export class Zone {
 
         }
         this.notifyLeft(thing, newZone);
+    }
+
+    public notifyHealthUpdated(user: User, health: number, deaths: number) {
+        for (const listener of this.listeners) {
+            this.onHealthUpdate(user, health, deaths, listener)
+        }
+    }
+
+    public notifyUserPerformedHit(user: User) {
+        for (const listener of this.listeners) {
+            this.onHitCallback(user, listener)
+        }
     }
 
     /**

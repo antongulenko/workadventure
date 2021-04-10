@@ -7,9 +7,9 @@ import {
     OnConnectInterface,
     PointInterface,
     PositionInterface,
-    RoomJoinedMessageInterface
+    RoomJoinedMessageInterface,
 } from "../../Connexion/ConnexionModels";
-import {CurrentGamerInterface, hasMovedEventName, Player} from "../Player/Player";
+import {CurrentGamerInterface, hasMovedEventName, hitEventName, Player} from "../Player/Player";
 import {DEBUG_MODE, JITSI_PRIVATE_MODE, POSITION_DELAY, RESOLUTION, ZOOM_LEVEL} from "../../Enum/EnvironmentVariable";
 import {ITiledMap, ITiledMapLayer, ITiledMapLayerProperty, ITiledMapObject, ITiledTileSet} from "../Map/ITiledMap";
 import {AddPlayerInterface} from "./AddPlayerInterface";
@@ -20,6 +20,7 @@ import {RemotePlayer} from "../Entity/RemotePlayer";
 import {Queue} from 'queue-typescript';
 import {SimplePeer, UserSimplePeerInterface} from "../../WebRtc/SimplePeer";
 import {ReconnectingSceneName} from "../Reconnecting/ReconnectingScene";
+import {hitAnimationTexture} from "../Entity/Character";
 import {lazyLoadPlayerCharacterTextures, loadCustomTexture} from "../Entity/PlayerTexturesLoadingManager";
 import {
     CenterListener,
@@ -39,7 +40,7 @@ import {mediaManager} from "../../WebRtc/MediaManager";
 import {ItemFactoryInterface} from "../Items/ItemFactoryInterface";
 import {ActionableItem} from "../Items/ActionableItem";
 import {UserInputManager} from "../UserInput/UserInputManager";
-import {UserMovedMessage} from "../../Messages/generated/messages_pb";
+import {PlayerHealthChangedMessage, PlayerPerformedHitMessage, UserMovedMessage} from "../../Messages/generated/messages_pb";
 import {ProtobufClientUtils} from "../../Network/ProtobufClientUtils";
 import {connectionManager} from "../../Connexion/ConnectionManager";
 import {RoomConnection} from "../../Connexion/RoomConnection";
@@ -69,6 +70,7 @@ import FILE_LOAD_ERROR = Phaser.Loader.Events.FILE_LOAD_ERROR;
 import DOMElement = Phaser.GameObjects.DOMElement;
 import {Subscription} from "rxjs";
 import {worldFullMessageStream} from "../../Connexion/WorldFullMessageStream";
+import { Character } from "../Entity/Character";
 
 export interface GameSceneInitInterface {
     initPosition: PointInterface|null,
@@ -223,6 +225,26 @@ export class GameScene extends ResizableScene implements CenterListener {
 
         this.load.spritesheet('layout_modes', 'resources/objects/layout_modes.png', {frameWidth: 32, frameHeight: 32});
         this.load.bitmapFont('main_font', 'resources/fonts/arcade.png', 'resources/fonts/arcade.xml');
+
+        this.load.spritesheet(hitAnimationTexture + "1", 'resources/animations/hit1.png', {frameWidth: 32, frameHeight: 32, endFrame: 31});
+        this.load.spritesheet(hitAnimationTexture + "2", 'resources/animations/hit2.png', {frameWidth: 32, frameHeight: 32, endFrame: 19});
+        this.load.spritesheet(hitAnimationTexture + "3", 'resources/animations/hit3.png', {frameWidth: 32, frameHeight: 32, endFrame: 19});
+        this.load.spritesheet(hitAnimationTexture + "4", 'resources/animations/hit4.png', {frameWidth: 32, frameHeight: 32, endFrame: 27});
+        this.load.spritesheet(hitAnimationTexture + "5", 'resources/animations/hit5.png', {frameWidth: 32, frameHeight: 32, endFrame: 27});
+        this.load.spritesheet(hitAnimationTexture + "6", 'resources/animations/hit6.png', {frameWidth: 32, frameHeight: 32, endFrame: 48});
+        this.load.spritesheet(hitAnimationTexture + "7", 'resources/animations/hit7.png', {frameWidth: 32, frameHeight: 32, endFrame: 37});
+        this.load.spritesheet(hitAnimationTexture + "8", 'resources/animations/hit8.png', {frameWidth: 32, frameHeight: 32, endFrame: 37});
+        this.load.spritesheet(hitAnimationTexture + "9", 'resources/animations/hit9.png', {frameWidth: 32, frameHeight: 32, endFrame: 27});
+
+        // this.load.spritesheet(hitAnimationTexture + "1", 'resources/animations/hit1.png', {frameWidth: 139, frameHeight: 136, endFrame: 31});
+        // this.load.spritesheet(hitAnimationTexture + "2", 'resources/animations/hit2.png', {frameWidth: 192, frameHeight: 192, endFrame: 19});
+        // this.load.spritesheet(hitAnimationTexture + "3", 'resources/animations/hit3.png', {frameWidth: 192, frameHeight: 192, endFrame: 19});
+        // this.load.spritesheet(hitAnimationTexture + "4", 'resources/animations/hit4.png', {frameWidth: 192, frameHeight: 192, endFrame: 27});
+        // this.load.spritesheet(hitAnimationTexture + "5", 'resources/animations/hit5.png', {frameWidth: 192, frameHeight: 192, endFrame: 27});
+        // this.load.spritesheet(hitAnimationTexture + "6", 'resources/animations/hit6.png', {frameWidth: 192, frameHeight: 192, endFrame: 48});
+        // this.load.spritesheet(hitAnimationTexture + "7", 'resources/animations/hit7.png', {frameWidth: 192, frameHeight: 192, endFrame: 37});
+        // this.load.spritesheet(hitAnimationTexture + "8", 'resources/animations/hit8.png', {frameWidth: 192, frameHeight: 192, endFrame: 37});
+        // this.load.spritesheet(hitAnimationTexture + "9", 'resources/animations/hit9.png', {frameWidth: 192, frameHeight: 192, endFrame: 27});
 
         addLoader(this);
     }
@@ -440,6 +462,20 @@ export class GameScene extends ResizableScene implements CenterListener {
         }
     }
 
+    private findPlayer(userID: number): Character|null {
+        if (userID == this.connection.getUserId()) {
+            return this.CurrentPlayer;
+        }
+
+        const player : RemotePlayer | undefined = this.MapPlayersByKey.get(userID);
+        if (player === undefined) {
+            console.error('Player not found: ' + userID);
+            return null;
+        } else {
+            return player;
+        }
+    }
+
     /**
      * Initializes the connection to Pusher.
      */
@@ -485,6 +521,29 @@ export class GameScene extends ResizableScene implements CenterListener {
 
                 this.updatePlayerPosition(messageUserMoved);
             });
+
+            this.connection.onPlayerHealthChanged((message: PlayerHealthChangedMessage) => {
+                const health = message.getHealth();
+                const deaths = message.getDeaths();
+                const userID = message.getUserid();
+
+                const player = this.findPlayer(userID);
+                if (player != null) {
+                    player.updateHealth(health, deaths);
+                }
+            })
+
+            this.connection.onPlayerPerformedHit((message: PlayerPerformedHitMessage) => {
+                const userID = message.getUserid()
+                const position =  message.getPosition()
+                if (position === undefined) return
+                const direction = position.getDirection()
+
+                const player = this.findPlayer(userID);
+                if (player != null) {
+                    player.animateHit(direction)
+                }
+            })
 
             this.connection.onUserLeft((userId: number) => {
                 this.removePlayer(userId);
@@ -566,6 +625,9 @@ export class GameScene extends ResizableScene implements CenterListener {
             this.CurrentPlayer.on(hasMovedEventName, (event: HasMovedEvent) => {
                 this.gameMap.setPosition(event.x, event.y);
             })
+
+            // listen event to push hit
+            this.CurrentPlayer.on(hitEventName, this.pushHitEvent.bind(this))
 
             //this.initUsersPosition(roomJoinedMessage.users);
             this.connectionAnswerPromiseResolve(onConnect.room);
@@ -1056,6 +1118,10 @@ ${escapedMessage}
         }
 
         // Otherwise, do nothing.
+    }
+
+    pushHitEvent(event: HasMovedEvent) {
+        this.connection.emitHitMessage(event.x, event.y, event.direction, event.moving);
     }
 
     /**

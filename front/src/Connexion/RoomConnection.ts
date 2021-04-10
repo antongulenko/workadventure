@@ -27,7 +27,7 @@ import {
     SendJitsiJwtMessage,
     CharacterLayerMessage,
     PingMessage,
-    SendUserMessage, BanUserMessage
+    SendUserMessage, BanUserMessage, HitMessage, PlayerHealthChangedMessage, PlayerPerformedHitMessage
 } from "../Messages/generated/messages_pb"
 
 import {UserSimplePeerInterface} from "../WebRtc/SimplePeer";
@@ -139,6 +139,12 @@ export class RoomConnection implements RoomConnection {
                     } else if (subMessage.hasItemeventmessage()) {
                         event = EventMessage.ITEM_EVENT;
                         payload = subMessage.getItemeventmessage();
+                    } else if (subMessage.hasPlayerhealthchangedmessage()) {
+                        event = EventMessage.PLAYER_HEALTH_CHANGED;
+                        payload = subMessage.getPlayerhealthchangedmessage();
+                    } else if (subMessage.hasPlayerperformedhitmessage()) {
+                        event = EventMessage.PLAYER_PERFORMED_HIT;
+                        payload = subMessage.getPlayerperformedhitmessage()
                     } else {
                         throw new Error('Unexpected batch message type');
                     }
@@ -333,6 +339,14 @@ export class RoomConnection implements RoomConnection {
     public onUserMoved(callback: (message: UserMovedMessage) => void): void {
         this.onMessage(EventMessage.USER_MOVED, callback);
         //this.socket.on(EventMessage.USER_MOVED, callback);
+    }
+
+    public onPlayerHealthChanged(callback: (message: PlayerHealthChangedMessage) => void): void {
+        this.onMessage(EventMessage.PLAYER_HEALTH_CHANGED, callback);
+    }
+
+    public onPlayerPerformedHit(callback: (message: PlayerPerformedHitMessage) => void): void {
+        this.onMessage(EventMessage.PLAYER_PERFORMED_HIT, callback)
     }
 
     /**
@@ -571,6 +585,22 @@ export class RoomConnection implements RoomConnection {
 
         const clientToServerMessage = new ClientToServerMessage();
         clientToServerMessage.setQueryjitsijwtmessage(queryJitsiJwtMessage);
+
+        this.socket.send(clientToServerMessage.serializeBinary().buffer);
+    }
+
+    public emitHitMessage(x : number, y : number, direction : string, moving: boolean): void {
+        if(!this.socket){
+            return;
+        }
+
+        const positionMessage = this.toPositionMessage(x, y, direction, moving);
+        const hitMessage = new HitMessage();
+        hitMessage.setPosition(positionMessage);
+
+        //console.log('Sending hit ', hitMessage.getX(), hitMessage.getY());
+        const clientToServerMessage = new ClientToServerMessage();
+        clientToServerMessage.setHitmessage(hitMessage);
 
         this.socket.send(clientToServerMessage.serializeBinary().buffer);
     }

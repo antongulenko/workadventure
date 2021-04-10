@@ -8,10 +8,11 @@
  * The PositionNotifier is important for performance. It allows us to send the position of players only to a restricted
  * number of players around the current player.
  */
-import {EntersCallback, LeavesCallback, MovesCallback, Zone} from "./Zone";
+import {EntersCallback, LeavesCallback, MovesCallback, HealthCallback, UserPerformedHitCallback, Zone} from "./Zone";
 import {Movable} from "_Model/Movable";
 import {PositionInterface} from "_Model/PositionInterface";
 import {ZoneSocket} from "../RoomManager";
+import {User} from "_Model/User";
 
 interface ZoneDescriptor {
     i: number;
@@ -24,7 +25,7 @@ export class PositionNotifier {
 
     private zones: Zone[][] = [];
 
-    constructor(private zoneWidth: number, private zoneHeight: number, private onUserEnters: EntersCallback, private onUserMoves: MovesCallback, private onUserLeaves: LeavesCallback) {
+    constructor(private zoneWidth: number, private zoneHeight: number, private onUserEnters: EntersCallback, private onUserMoves: MovesCallback, private onUserLeaves: LeavesCallback, private onHealthUpdate: HealthCallback, private onHitCallback: UserPerformedHitCallback) {
     }
 
     private getZoneDescriptorFromCoordinates(x: number, y: number): ZoneDescriptor {
@@ -68,6 +69,20 @@ export class PositionNotifier {
         oldZone.leave(thing, null);
     }
 
+    public healthUpdated(user: User, health: number, deaths: number) {
+        const position = user.getPosition();
+        const zoneDesc = this.getZoneDescriptorFromCoordinates(position.x, position.y);
+        const zone = this.getZone(zoneDesc.i, zoneDesc.j);
+        zone.notifyHealthUpdated(user, health, deaths);
+    }
+
+    public userPerformedHit(user: User) {
+        const position = user.getPosition();
+        const zoneDesc = this.getZoneDescriptorFromCoordinates(position.x, position.y);
+        const zone = this.getZone(zoneDesc.i, zoneDesc.j);
+        zone.notifyUserPerformedHit(user);
+    }
+
     private getZone(i: number, j: number): Zone {
         let zoneRow = this.zones[j];
         if (zoneRow === undefined) {
@@ -77,7 +92,7 @@ export class PositionNotifier {
 
         let zone = this.zones[j][i];
         if (zone === undefined) {
-            zone = new Zone(this.onUserEnters, this.onUserMoves, this.onUserLeaves, i, j);
+            zone = new Zone(this.onUserEnters, this.onUserMoves, this.onUserLeaves, this.onHealthUpdate, this.onHitCallback, i, j);
             this.zones[j][i] = zone;
         }
         return zone;

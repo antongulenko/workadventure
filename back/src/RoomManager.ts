@@ -16,7 +16,7 @@ import {
     SilentMessage,
     UserMovesMessage,
     WebRtcSignalToServerMessage, WorldFullWarningToRoomMessage,
-    ZoneMessage
+    ZoneMessage, HitMessage
 } from "./Messages/generated/messages_pb";
 import {sendUnaryData, ServerDuplexStream, ServerUnaryCall, ServerWritableStream} from "grpc";
 import {socketManager} from "./Services/SocketManager";
@@ -71,7 +71,9 @@ const roomManager: IRoomManagerServer = {
                         socketManager.emitPlayGlobalMessage(room, message.getPlayglobalmessage() as PlayGlobalMessage);
                     } else if (message.hasQueryjitsijwtmessage()){
                         socketManager.handleQueryJitsiJwtMessage(user, message.getQueryjitsijwtmessage() as QueryJitsiJwtMessage);
-                    }else if (message.hasSendusermessage()) {
+                    } else if (message.hasHitmessage()) {
+                        socketManager.handleHitMessage(room, user, message.getHitmessage() as HitMessage);
+                    } else if (message.hasSendusermessage()) {
                         const sendUserMessage = message.getSendusermessage();
                         if(sendUserMessage !== undefined) {
                             socketManager.handlerSendUserMessage(user, sendUserMessage);
@@ -119,7 +121,7 @@ const roomManager: IRoomManagerServer = {
             socketManager.removeZoneListener(call, zoneMessage.getRoomid(), zoneMessage.getX(), zoneMessage.getY());
             call.end();
         })
-        
+
         call.on('close', () => {
             debug('listenZone connection closed');
             socketManager.removeZoneListener(call, zoneMessage.getRoomid(), zoneMessage.getX(), zoneMessage.getY());
